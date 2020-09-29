@@ -4,15 +4,46 @@ import click
 
 from aiida.cmdline.params import types
 from aiida.cmdline.params.options import OverridableOption
+from aiida.cmdline.utils import decorators
+from aiida.common import exceptions
 
 from . import validate
 
-STRUCTURE = OverridableOption(
-    '-s', '--structure', type=types.DataParamType(sub_classes=('aiida.data:structure',)), help='StructureData node.'
-)
+
+class PseudoFamilyType(types.GroupParamType):
+    """Subclass of `GroupParamType` in order to be able to print warning with instructions."""
+
+    @decorators.with_dbenv()
+    def convert(self, value, param, ctx):
+        """Convert the value to actual pseudo family instance."""
+        try:
+            group = super().convert(value, param, ctx)
+        except click.BadParameter:
+            try:
+                from aiida.orm import load_group
+                load_group(value)
+            except exceptions.NotExistent as exception:  # pylint: disable=try-except-raise
+                raise
+            else:
+                raise click.BadParameter(
+                    f'`{value}` is not a supported pseudo potential family type.\nTo install a supported pseudo family,'
+                    ' use the `aiida-pseudo` plugin. See the following link for detailed instructions:\n\n'
+                    '    https://github.com/aiidateam/aiida-quantumespresso#pseudo-potentials'
+                ) from exception
+
+        return group
+
 
 PSEUDO_FAMILY = OverridableOption(
-    '-p', '--pseudo-family', 'pseudo_family', type=click.STRING, help='Pseudo potential family name.'
+    '-F',
+    '--pseudo-family',
+    type=PseudoFamilyType(sub_classes=('aiida.groups:pseudo.family.upf', 'aiida.groups:pseudo.family.sssp')),
+    required=True,
+    help='Select a pseudo potential family.'
+)
+
+STRUCTURE = OverridableOption(
+    '-S', '--structure', type=types.DataParamType(sub_classes=('aiida.data:structure',)), help='StructureData node.'
 )
 
 KPOINTS_DISTANCE = OverridableOption(
@@ -138,16 +169,11 @@ CLEAN_WORKDIR = OverridableOption(
 )
 
 ECUTWFC = OverridableOption(
-    '-W', '--ecutwfc', type=click.FLOAT, default=30., show_default=True, help='The plane wave cutoff energy in Ry.'
+    '-W', '--ecutwfc', type=click.FLOAT, show_default=True, help='The plane wave cutoff energy in Ry.'
 )
 
 ECUTRHO = OverridableOption(
-    '-R',
-    '--ecutrho',
-    type=click.FLOAT,
-    default=240.,
-    show_default=True,
-    help='The charge density cutoff energy in Ry.'
+    '-R', '--ecutrho', type=click.FLOAT, show_default=True, help='The charge density cutoff energy in Ry.'
 )
 
 HUBBARD_U = OverridableOption(
@@ -179,7 +205,6 @@ HUBBARD_FILE = OverridableOption(
 )
 
 STARTING_MAGNETIZATION = OverridableOption(
-    '-M',
     '--starting-magnetization',
     nargs=2,
     multiple=True,
@@ -189,7 +214,6 @@ STARTING_MAGNETIZATION = OverridableOption(
 )
 
 SMEARING = OverridableOption(
-    '-S',
     '--smearing',
     nargs=2,
     default=(None, None),
